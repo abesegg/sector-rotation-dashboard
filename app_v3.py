@@ -336,7 +336,7 @@ with tab4:
 
         styled = (
             df_rank.style
-            .applymap(_style_pct, subset=["前日比(%)"])
+            .map(_style_pct, subset=["前日比(%)"])
             .format({"株価(円)": "{:,.1f}", "売買代金(百万円)": "{:,.0f}"})
             .set_properties(**{"text-align": "right"}, subset=["株価(円)", "前日比(%)", "売買代金(百万円)"])
             .set_properties(**{"text-align": "left"}, subset=["銘柄名", "市場"])
