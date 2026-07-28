@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import plotly.colors as pc
 import requests
 import re
+import io
 from datetime import datetime, timedelta
 
 st.set_page_config(
@@ -304,7 +305,7 @@ def fetch_trading_ranking(top_n: int = 20) -> tuple[pd.DataFrame, str]:
     m = re.search(r'\d{4}/\d{2}/\d{2} \d{2}:\d{2}', r.text)
     source_time = m.group(0) if m else "不明"
 
-    raw = pd.read_html(r.text)[0]
+    raw = pd.read_html(io.StringIO(r.text))[0]
     names, codes, markets = zip(*raw["銘柄名(コード/市場)"].map(_parse_name_col))
     df = pd.DataFrame({
         "ランク":            raw["順位"],
