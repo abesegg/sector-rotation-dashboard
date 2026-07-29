@@ -60,6 +60,13 @@ def normalize_to_100(prices: pd.DataFrame) -> pd.DataFrame:
     return prices / first * 100
 
 
+# ─── データ取得（キャッシュ済みのため高速・サイドバーのmin_value計算に必要）
+with st.spinner("データ取得中…"):
+    sector_prices_full, benchmark_full = fetch_nk500()
+
+data_start = sector_prices_full.index[0].date()
+data_end = sector_prices_full.index[-1].date()
+
 # ─── Sidebar ────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("⚙️ 設定")
@@ -73,23 +80,33 @@ with st.sidebar:
     }
     period_label = st.selectbox("表示期間", list(period_map.keys()), index=0)
     days = period_map[period_label]
-    end_dt = datetime.today()
+    today = datetime.today().date()
+    # 基準日の最小値 = データ開始日 + 表示期間（これより前を選ぶと期間内にデータがなくなる）
+    min_end_date = data_start + timedelta(days=days)
+    # 期間が変わったときに古い日付が残らないよう key を期間名に連動
+    end_date = st.date_input(
+        "基準日", value=today,
+        min_value=min_end_date, max_value=today,
+        key=f"end_date_{period_label}",
+    )
+    end_dt = datetime.combine(end_date, datetime.min.time())
     start_dt = end_dt - timedelta(days=days)
 
     st.divider()
     st.caption("データソース: 日経500種業種別指数")
     st.caption("（日本経済新聞社）")
 
-# ─── データ取得 ────────────────────────────────────────────────────────────
-with st.spinner("データ取得中…"):
-    sector_prices_full, benchmark_full = fetch_nk500()
+# 基準日以前のデータでヒートマップ・KPIを計算（表示期間に引きずられない）
+sector_prices_upto = sector_prices_full.loc[:end_dt.strftime("%Y-%m-%d")]
+benchmark_upto = benchmark_full.loc[:end_dt.strftime("%Y-%m-%d")]
 
-# ラインチャート用（表示期間でスライス）
-sector_prices = sector_prices_full.loc[start_dt.strftime("%Y-%m-%d"):]
-benchmark_prices = benchmark_full.loc[start_dt.strftime("%Y-%m-%d"):]
-
-data_start = sector_prices_full.index[0]
-data_end = sector_prices_full.index[-1]
+# ラインチャート用（基準日から表示期間分遡ってスライス）
+sector_prices = sector_prices_full.loc[
+    start_dt.strftime("%Y-%m-%d"):end_dt.strftime("%Y-%m-%d")
+]
+benchmark_prices = benchmark_full.loc[
+    start_dt.strftime("%Y-%m-%d"):end_dt.strftime("%Y-%m-%d")
+]
 
 # セクター → 色の固定マッピング（36色対応: Dark24 + Light24 = 48色）
 _palette = pc.qualitative.Dark24 + pc.qualitative.Light24
@@ -101,8 +118,9 @@ SECTOR_COLOR: dict[str, str] = {
 # ─── ヘッダー ──────────────────────────────────────────────────────────────
 st.title("📊 日本株式 セクターローテーション")
 display_start = sector_prices.index[0] if not sector_prices.empty else data_start
+actual_end = sector_prices_upto.index[-1] if not sector_prices_upto.empty else end_dt
 st.caption(
-    f"表示期間: {display_start.strftime('%Y/%m/%d')} 〜 {data_end.strftime('%Y/%m/%d')}"
+    f"表示期間: {display_start.strftime('%Y/%m/%d')} 〜 {actual_end.strftime('%Y/%m/%d')}"
     f"　|　セクター数: {len(sector_prices_full.columns)}"
 )
 
@@ -111,7 +129,7 @@ if sector_prices.empty:
     st.stop()
 
 # ─── KPIカード（1W騰落率 上位5 / 下位5）──────────────────────────────────
-returns_all = calc_period_returns(sector_prices_full)
+returns_all = calc_period_returns(sector_prices_upto)
 returns_1w = returns_all["1W"].sort_values(ascending=False)
 top5 = returns_1w.head(5)
 bot5 = returns_1w.tail(5)
